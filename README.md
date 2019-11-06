@@ -1,1 +1,1 @@
-This repo aims to summarize and explain https://github.com/rust-lang/rust/issues/64477 and https://github.com/rust-lang/rust/pull/64856. 
+This repo aims to summarize and explain rust-lang/rust#64477 and rust-lang/rust#64856.
