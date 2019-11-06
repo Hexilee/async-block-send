@@ -119,12 +119,7 @@ However, you still cannot use format in `await` expression.
 
 ### format
 
-What's the problem with this code?::alloc::fmt::format(::core::fmt::Arguments::new_v1(
-            &[],
-            &match () {
-                () => [],
-            },
-        )))
+What's the problem with this code:
 
 ```rust
 // examples/format.rs
