@@ -1,4 +1,4 @@
-This repository aims to summarize and explain [rust-lang/rust#64477](https://github.com/rust-lang/rust/issues/64477) and [ rust-lang/rust#64856](https://github.com/rust-lang/rust/pull/64856).
+This blog aims to summarize and explain [rust-lang/rust#64477](https://github.com/rust-lang/rust/issues/64477) and [ rust-lang/rust#64856](https://github.com/rust-lang/rust/pull/64856).
 
 ### Introduction
 
@@ -119,7 +119,12 @@ However, you still cannot use format in `await` expression.
 
 ### format
 
-What's the problem with this code?
+What's the problem with this code?::alloc::fmt::format(::core::fmt::Arguments::new_v1(
+            &[],
+            &match () {
+                () => [],
+            },
+        )))
 
 ```rust
 // examples/format.rs
@@ -145,4 +150,58 @@ macro format will  expand `format!("")` into:
         )))
 ```
 
-This expression generate some temporaries
+This expression generate some temporaries that do not implement `Send`, like `std::fmt::ArgumentV1`, `&core::fmt::Void`. And, these temporaries stay alive at the end of current expression.
+
+```rust
+foo(::alloc::fmt::format(::core::fmt::Arguments::new_v1(
+            &[],
+            &match () {
+                () => [],
+            },
+        )))).await;
+^^^^^^^^^^^^^^^^^^^^^^ temporaries stay alive
+```
+
+So, these temporaries across 'await', which means they will be stored as field of a stackless generator (the `GenFuture` returned by async block).
+
+> Read this [blog](https://github.com/Hexilee/async-io-demo#generator) for more contents about generator.
+
+Eventually, `GenFuture: !Send` conflicts against `impl Send`.
+
+### Solution
+
+- Spurious send required was fixed by [rust-lang/rust#64584](https://github.com/rust-lang/rust/pull/64584), which was merged into master branch.
+
+- Temporaries scoped `format` was implemented by [rust-lang/rust#64856](https://github.com/rust-lang/rust/pull/64856), but merging is blocked.
+
+  You can override `format` by yourself, there is a polyfill:
+
+  ```rust
+  // examples/format-override.rs
+  extern crate alloc;
+  
+  macro_rules! format {
+      ($($arg:tt)*) => {{
+          let res = alloc::fmt::format(alloc::__export::format_args!($($arg)*));
+          res
+      }}
+  }
+  
+  async fn foo(_: String) {}
+  
+  fn bar() -> impl Send {
+      async move {
+          foo(format!("")).await;
+      }
+  }
+  
+  fn main() {}
+  ```
+
+  Run it:
+
+  ```bash
+  cargo +nightly-2019-11-05 run --example format-override
+  ```
+
+  Pass.
